@@ -1,0 +1,63 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: build",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/build_viper_gpu.sh",
+            "args": [
+                "--parallel",
+                "16"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Generated task for CMake configure and build"
+        },
+        {
+            "label": "CMake: re-build",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/build_viper_gpu.sh",
+            "args": [
+                "--no-configure",
+                "--parallel",
+                "16"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            //"dependsOn": "CMake: configure",
+            "problemMatcher": ["$gcc"],
+            "detail": "Generated task for CMake build (skips configuration)"
+        },
+        {
+            "label": "Launch Job on Viper-GPU",
+            "type": "shell",
+            "command": "sbatch ${workspaceFolder}/scripts/job_viper_gpu.sh",
+            "args": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            //"dependsOn": "CMake: configure",
+            "problemMatcher": ["$gcc"],
+            "detail": "Run the job on Viper-GPU"
+        },
+        {
+            "label": "Profile Job on Viper-GPU",
+            "type": "shell",
+            "command": "sbatch ${workspaceFolder}/scripts/job_viper_gpu_profile.sh",
+            "args": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            //"dependsOn": "CMake: configure",
+            "problemMatcher": ["$gcc"],
+            "detail": "Run the job on Viper-GPU"
+        }
+    ]
+}
