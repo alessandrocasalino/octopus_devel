@@ -11,8 +11,6 @@
 #define cuBlas_operation_conjugate_transpose rocblas_operation_conjugate_transpose
 #define cuBlas_operation_none rocblas_operation_none
 #define cuBlas_double_complex rocblas_double_complex
-#define cuBlasGetMathMode(handle, mode) rocblas_get_math_mode((handle), (mode))
-#define cuBlasMath_t rocblas_math_mode
 #else
 #include <cublas_v2.h>
 #define cuBlas_handle cublasHandle_t
@@ -30,13 +28,14 @@
 #define cuBlasMath_t cublasMath_t
 #endif
 
+#ifndef __HIP_PLATFORM_HCC__
 template <typename T>
 void cuBlas_GetMathMode(const T& handle) {
 
     cuBlasMath_t mathMode;
 
-    cublasStatus_t status = cublasGetMathMode(handle, &mathMode);
-    
+    auto status = cuBlasGetMathMode(handle, &mathMode);
+
     if (status == CUBLAS_STATUS_SUCCESS) {
         std::cout << "Current math mode: ";
         switch (mathMode) {
@@ -55,8 +54,10 @@ void cuBlas_GetMathMode(const T& handle) {
             default:
                 std::cout << "Unknown mode\n";
         }
-    } else {
+    }
+    else {
         std::cerr << "Failed to get math mode: " << status << std::endl;
     }
 
 }
+#endif

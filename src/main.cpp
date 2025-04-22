@@ -410,9 +410,11 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                     exit(EXIT_FAILURE);
                 }
             }
-
+            
+#ifndef __HIP_PLATFORM_HCC__
             // Get cuBlas math mode
             cuBlas_GetMathMode(handles[0]);
+#endif
 
             CUDA_CHECK(cuEventRecord(handles_init));
 
