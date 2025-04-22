@@ -3,8 +3,10 @@
 # Load necessary modules based on hostname
 module purge
 if [[ $(hostname) == *viper* ]]; then
+    echo "Loading modules for Viper..."
     module load rocm/6.4
 elif [[ $(hostname) == *raven* ]]; then
+    echo "Loading modules for Raven..."
     module load gcc/13
     module load cuda/12.6
 else
