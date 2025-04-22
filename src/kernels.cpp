@@ -170,7 +170,6 @@ __global__ void projector_bra_phase_gather (
         for (int j = threadIdx.y + blockIdx.y * blockDim.y; j < nst_linear; j += blockDim.y * gridDim.y) {
             const double2 phases_in = phases[phases_offset + map_offset + i];
             const double2 psi_in = psi[((map[map_offset + i] - 1) << ldpsi) + j];
-            //phasepsi[npoints * j + i] = complex_mul(phases_in, psi_in);
             phasepsi[j + i * nst_linear] = complex_mul(phases_in, psi_in);
         }
     }
