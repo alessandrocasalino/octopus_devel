@@ -36,8 +36,8 @@ __global__ void projector_bra_phase(const int nmat,
     projection[ist + ((scal_offset + ipj) << ldprojection)] = scal[scal_offset + ipj] * aa;
 }
 
-
-__global__ void projector_bra_phase_shmem_opt(const int nmat,
+#ifdef __HIP_PLATFORM_HCC__
+__global__ void projector_bra_phase_opt(const int nmat,
     const int * __restrict const offsets,
     const rtype * __restrict const matrix,
     const int * __restrict const map,
@@ -45,9 +45,8 @@ __global__ void projector_bra_phase_shmem_opt(const int nmat,
     const double2 * __restrict const psi, const int ldpsi,
     double2 * __restrict const projection, const int ldprojection,
     const double2 * __restrict const phases, const int phases_offset) {
-    const int my_warp_size = 1;
 
-    const int ist = get_global_id(0) / my_warp_size;
+    const int ist = get_global_id(0);
     const int ipj = get_global_id(1);
     const int imat = get_global_id(2);
 
@@ -63,8 +62,12 @@ __global__ void projector_bra_phase_shmem_opt(const int nmat,
 
     const int start = 0;
     const int end = npoints;
-
+    
+    #ifdef __HIP_PLATFORM_HCC__
     constexpr int smz = 64; // shared memory size
+    #else
+    constexpr int smz = 32; // shared memory size
+    #endif
 
     __shared__ int shared_map[smz];
     __shared__ double phases_x[smz];
@@ -93,6 +96,47 @@ __global__ void projector_bra_phase_shmem_opt(const int nmat,
 
     projection[ist + ((scal_offset + ipj) << ldprojection)] = scal[scal_offset + ipj] * aa;
 }
+#else
+__global__ void projector_bra_phase_opt(const int nmat,
+    const int * __restrict const offsets,
+    const rtype * __restrict const matrix,
+    const int * __restrict const map,
+    const double * __restrict const scal,
+    const double2 * __restrict const psi, const int ldpsi,
+    double2 * __restrict const projection, const int ldprojection,
+    const double2 * __restrict const phases, const int phases_offset) {
+
+  const int my_warp_size = 32;
+
+  const int ist = get_global_id(0)/my_warp_size;  // the kernel is to be called for (at least) all ist<nst_linear.
+  const int ipj = get_global_id(1);
+  const int imat = get_global_id(2);
+
+  const int npoints       = offsets[OFFSET_SIZE*imat + 0];
+  const int nprojs        = offsets[OFFSET_SIZE*imat + 1];
+  const int matrix_offset = offsets[OFFSET_SIZE*imat + 2];
+  const int map_offset    = offsets[OFFSET_SIZE*imat + 3];
+  const int scal_offset   = offsets[OFFSET_SIZE*imat + 4];
+
+  if(ipj >= nprojs) return;
+
+  const int nppj = npoints*ipj;
+
+  const int slice = npoints%my_warp_size==0 ? npoints/my_warp_size : npoints/my_warp_size+1;
+  const int start = slice * (get_local_id(0)%my_warp_size);
+  const int end   = min( start + slice, npoints );
+
+  double2 aa = 0.0;
+  for(int ip = start; ip < end; ip++){
+    double2 phasepsi = complex_mul(phases[phases_offset + map_offset + ip], psi[((map[map_offset + ip] - 1)<<ldpsi) + ist]);
+    aa += MUL(CONJ(matrix[matrix_offset + ip + nppj]),phasepsi);
+  }
+
+  aa = zwarpReduce(aa);
+  if (get_local_id(0)%my_warp_size == 0) 
+    projection[ist + ((scal_offset + ipj)<<ldprojection)] = scal[scal_offset + ipj]*aa;
+}
+#endif
 
 
 __global__ void projector_bra_phase_gather (

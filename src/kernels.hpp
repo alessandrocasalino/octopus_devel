@@ -11,7 +11,7 @@ __global__ void projector_bra_phase(const int nmat,
     double2 const * __restrict phases, const int phases_offset);
 
 
-__global__ void projector_bra_phase_shmem_opt(const int nmat,
+__global__ void projector_bra_phase_opt(const int nmat,
     const int * __restrict const offsets,
     const rtype * __restrict const matrix,
     const int * __restrict const map,

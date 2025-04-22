@@ -2,7 +2,9 @@
 #define DEFINITIONS_H
 
 #ifdef __HIP_PLATFORM_HCC__
+
 #include <hip/hip_runtime.h>
+
 #define cuMalloc hipMalloc
 #define cuMemcpy hipMemcpy
 #define cuMemset hipMemset
@@ -27,8 +29,18 @@
 #define cuMemcpyHostToDevice hipMemcpyHostToDevice
 #define cuMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define cuGetLastError hipGetLastError
+
+#define cuStreamCreate(stream) hipStreamCreate(&(stream))
+#define cuStreamDestroy(stream) hipStreamDestroy(stream)
+#define cuStreamSynchronize(stream) hipStreamSynchronize(stream)
+#define cuStream_t hipStream_t
+
+#define warpShflDown(var, delta)   __shfl_down (var, delta)
+
 #else
+
 #include <cuda_runtime.h>
+
 #define cuMalloc cudaMalloc
 #define cuMemcpy cudaMemcpy
 #define cuMemset cudaMemset
@@ -44,7 +56,7 @@
 #define cuEventSynchronize cudaEventSynchronize
 #define cuEventElapsedTime cudaEventElapsedTime
 #define cuEventDestroy cudaEventDestroy
-#define cuLaunchKernel <<<grid, block>>>
+#define cuLaunchKernel(kernel, grid, block, shared_mem, stream, ...) kernel<<<grid, block, shared_mem, stream>>>(__VA_ARGS__)
 #define cuDeviceProp cudaDeviceProp
 #define cuGetDevice cudaGetDevice
 #define cuGetDeviceProperties cudaGetDeviceProperties
@@ -53,18 +65,15 @@
 #define cuMemcpyHostToDevice cudaMemcpyHostToDevice
 #define cuMemcpyDeviceToHost cudaMemcpyDeviceToHost
 #define cuGetLastError cudaGetLastError
-#endif
 
-#ifdef __HIP_PLATFORM_HCC__
-#define cuStreamCreate(stream) hipStreamCreate(&(stream))
-#define cuStreamDestroy(stream) hipStreamDestroy(stream)
-#define cuStreamSynchronize(stream) hipStreamSynchronize(stream)
-#define cuStream_t hipStream_t
-#else
 #define cuStreamCreate(stream) cudaStreamCreate(&(stream))
 #define cuStreamDestroy(stream) cudaStreamDestroy(stream)
 #define cuStreamSynchronize(stream) cudaStreamSynchronize(stream)
 #define cuStream_t cudaStream_t
+
+#define MASK_ALL_WARP 0xFFFFFFFF
+#define warpShflDown(var, delta)   __shfl_down_sync (MASK_ALL_WARP, var, delta)
+
 #endif
 
 
@@ -201,6 +210,16 @@ __device__ __forceinline__ static size_t get_local_size(const int ii) {
     case 2: return blockDim.z;
     }
     return 0;
+}
+
+__device__ inline double2 zwarpReduce(double2 val)
+{
+    #pragma unroll
+    for (int offset = warpSize/2; offset > 0; offset /= 2){
+        val.x += warpShflDown(val.x, offset);
+        val.y += warpShflDown(val.y, offset);
+    }
+    return val;
 }
 
 __host__ double rand_double(double min = -1.0, double max = 1.0);

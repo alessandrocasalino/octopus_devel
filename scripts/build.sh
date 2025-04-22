@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 
-# Load necessary modules
+# Load necessary modules based on hostname
 module purge
-module load rocm/6.4
+if [[ $(hostname) == *viper* ]]; then
+    module load rocm/6.4
+elif [[ $(hostname) == *raven* ]]; then
+    module load gcc/13
+    module load cuda/12.6
+else
+    echo "Error: Unknown hostname. Unable to determine which module to load."
+    exit 1
+fi
 
 # Default behavior: perform configuration and use all available cores for parallelism
 DO_CONFIGURE=true
@@ -34,6 +42,7 @@ done
 # Perform configuration if enabled
 if $DO_CONFIGURE; then
     echo "Configuring the project with CMake using $PARALLEL_CORES cores..."
+    rm -rf build
     mkdir build
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 fi

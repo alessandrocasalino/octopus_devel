@@ -4,7 +4,7 @@
         {
             "label": "CMake: build",
             "type": "shell",
-            "command": "${workspaceFolder}/scripts/build_viper_gpu.sh",
+            "command": "${workspaceFolder}/scripts/build.sh",
             "args": [
                 "--parallel",
                 "16"
@@ -19,7 +19,7 @@
         {
             "label": "CMake: re-build",
             "type": "shell",
-            "command": "${workspaceFolder}/scripts/build_viper_gpu.sh",
+            "command": "${workspaceFolder}/scripts/build.sh",
             "args": [
                 "--no-configure",
                 "--parallel",
@@ -58,6 +58,19 @@
             //"dependsOn": "CMake: configure",
             "problemMatcher": ["$gcc"],
             "detail": "Run the job on Viper-GPU"
+        },
+        {
+            "label": "Launch Job on Raven",
+            "type": "shell",
+            "command": "sbatch ${workspaceFolder}/scripts/job_raven_gpu.sh",
+            "args": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            //"dependsOn": "CMake: configure",
+            "problemMatcher": ["$gcc"],
+            "detail": "Run the job on Raven"
         }
     ]
 }

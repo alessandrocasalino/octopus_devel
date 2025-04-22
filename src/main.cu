@@ -3,12 +3,35 @@
 #include "blas.hpp"
 #include <iostream>
 #include <vector>
+#include <array>
 #include <cstdlib>
 #include <ctime>
 #include <numeric>
 #include <random>
+#include <algorithm>
 
 constexpr bool debug {true};
+constexpr double tolerance {1e-3};
+
+void check_results(const auto &h_projection, const auto &h_projection_comparison) {
+    // Compare with the previous results
+    for(int i = 0; i < h_projection.size(); ++i){
+        const auto& hp = h_projection[i];
+        const auto& hpc = h_projection_comparison[i];
+        // Compare elements with a tolerance
+        if(h_projection[i].x > h_projection_comparison[i].x + tolerance || 
+            h_projection[i].x < h_projection_comparison[i].x - tolerance ||
+            h_projection[i].y > h_projection_comparison[i].y + tolerance ||
+            h_projection[i].y < h_projection_comparison[i].y - tolerance){
+                std::cerr << "Results do not match at index " << i << ": "
+                << "h_projection = (" << h_projection[i].x << ", " << h_projection[i].y << "), "
+                << "h_projection_comparison = (" << h_projection_comparison[i].x << ", " << h_projection_comparison[i].y << ")" << std::endl;
+            std::cout << "Results do not match!" << std::endl;
+            return;
+        }
+    }
+    std::cout << "Results match!" << std::endl;
+}
 
 
 int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
@@ -19,9 +42,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
     // Number of executions
     constexpr int nexec = 10;
-
-    // Calculate the total number of threads
-    const int total_threads = grid.x * grid.y * grid.z * block.x * block.y * block.z;
 
     const int nmat = 12;
     const int ldpsi = ld;
@@ -46,7 +66,11 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     std::vector<int> h_map(97842);
     std::vector<double> h_scal(174);
     std::vector<rtype> h_psi(53.248 * (1 << ldpsi));
+
     std::vector<rtype> h_projection(174 * (1 << ldprojection));
+
+    std::vector<rtype> h_projection_comparison(174 * (1 << ldprojection));
+
     std::vector<rtype> h_phases(2641734);
     constexpr int phase_offset = 0;
 
@@ -77,8 +101,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     CUDA_CHECK(cuMalloc(&d_projection, h_projection.size() * sizeof(rtype)));
     CUDA_CHECK(cuMalloc(&d_phases, h_phases.size() * sizeof(rtype)));
     CUDA_CHECK(cuMalloc(&d_scal, h_scal.size() * sizeof(double)));
-    
-
 
     {
         // Launch kernel nexec times and measure execution time
@@ -164,6 +186,7 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
         // Copy results back to host
         CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
+        CUDA_CHECK(cuMemcpy(h_projection_comparison.data(), d_projection, h_projection_comparison.size() * sizeof(rtype), cuMemcpyDeviceToHost));
 
         // Print a few values from the result
         if constexpr (debug) {
@@ -172,6 +195,11 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                 std::cout << "h_projection[" << i << "] = (" 
                         << h_projection[i].x << ", " 
                         << h_projection[i].y << ")" << std::endl;
+            }
+            for (int i = 0; i < std::min(10, static_cast<int>(h_projection_comparison.size())); ++i) {
+                std::cout << "h_projection_comparison[" << i << "] = (" 
+                        << h_projection_comparison[i].x << ", " 
+                        << h_projection_comparison[i].y << ")" << std::endl;
             }
         }
 
@@ -209,7 +237,7 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
             CUDA_CHECK(cuEventRecord(start));
         
             // Launch the kernel
-            cuLaunchKernel(projector_bra_phase_shmem_opt,
+            cuLaunchKernel(projector_bra_phase_opt,
                         grid, block,
                         0, 0,
                         nmat,
@@ -275,6 +303,9 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                         << h_projection[i].y << ")" << std::endl;
             }
         }
+
+        // Compare with the previous results
+        check_results(h_projection, h_projection_comparison);
 
         CUDA_CHECK(cuEventDestroy(start));
         CUDA_CHECK(cuEventDestroy(stop));
@@ -574,6 +605,9 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                         << h_projection[i].y << ")" << std::endl;
             }
         }
+
+        // Compare with the previous results
+        check_results(h_projection, h_projection_comparison);
 
         CUDA_CHECK(cuEventDestroy(start));
         CUDA_CHECK(cuEventDestroy(stop));
