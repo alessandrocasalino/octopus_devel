@@ -411,6 +411,9 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                 }
             }
 
+            // Get cuBlas math mode
+            cuBlas_GetMathMode(handles[0]);
+
             CUDA_CHECK(cuEventRecord(handles_init));
 
             // Perform matrix multiplication on stream

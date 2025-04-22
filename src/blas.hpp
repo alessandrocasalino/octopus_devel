@@ -11,6 +11,8 @@
 #define cuBlas_operation_conjugate_transpose rocblas_operation_conjugate_transpose
 #define cuBlas_operation_none rocblas_operation_none
 #define cuBlas_double_complex rocblas_double_complex
+#define cuBlasGetMathMode(handle, mode) rocblas_get_math_mode((handle), (mode))
+#define cuBlasMath_t rocblas_math_mode
 #else
 #include <cublas_v2.h>
 #define cuBlas_handle cublasHandle_t
@@ -24,4 +26,37 @@
 #define cuBlas_operation_conjugate_transpose CUBLAS_OP_C
 #define cuBlas_operation_none CUBLAS_OP_N
 #define cuBlas_double_complex cuDoubleComplex
+#define cuBlasGetMathMode cublasGetMathMode
+#define cuBlasMath_t cublasMath_t
 #endif
+
+template <typename T>
+void cuBlas_GetMathMode(const T& handle) {
+
+    cuBlasMath_t mathMode;
+
+    cublasStatus_t status = cublasGetMathMode(handle, &mathMode);
+    
+    if (status == CUBLAS_STATUS_SUCCESS) {
+        std::cout << "Current math mode: ";
+        switch (mathMode) {
+            case CUBLAS_DEFAULT_MATH:
+                std::cout << "CUBLAS_DEFAULT_MATH\n";
+                break;
+            case CUBLAS_TENSOR_OP_MATH:
+                std::cout << "CUBLAS_TENSOR_OP_MATH\n";
+                break;
+            case CUBLAS_PEDANTIC_MATH:
+                std::cout << "CUBLAS_PEDANTIC_MATH\n";
+                break;
+            case CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION:
+                std::cout << "CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION\n";
+                break;
+            default:
+                std::cout << "Unknown mode\n";
+        }
+    } else {
+        std::cerr << "Failed to get math mode: " << status << std::endl;
+    }
+
+}
