@@ -1,4 +1,4 @@
-## Projection Kernel
+## Projection Kernel: projector_bra_phase
 
 | Optimization                     | Viper GPU (AMD MI300A) | Raven (Nvidia A100) |
 |----------------------------------|------------------------|---------------------|
