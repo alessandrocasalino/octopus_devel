@@ -2,7 +2,7 @@
 
 | Optimization                     | Viper GPU (AMD MI300A) | Raven (Nvidia A100) |
 |----------------------------------|------------------------|---------------------|
-| Original                         | 10.426 +/- 1.071       | 3.165               |
+| Original                         | 10.426 +/- 1.071       | 11.052 +/- 0.169    |
 | ShMem tiled preload              | 6.949 +/- 0.053        | Not applicable      |
 | Warp Shuffle optimized           | Not applicable         | 2.262 +/- 0.14      |
 | BLAS with streams (Not Optimized)| 3.123 +/- 0.052        | 0.944 +/- 0.005     |
