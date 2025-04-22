@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 
 # Add the executable
-add_executable(octopus_devel ${SRC_DIR}/main.cu ${SRC_DIR}/kernels.cu)
+add_executable(octopus_devel ${SRC_DIR}/main.cpp ${SRC_DIR}/kernels.cpp)
 
 # Include the header directory
 target_include_directories(octopus_devel PRIVATE ${SRC_DIR})
@@ -40,6 +40,8 @@ else()
 
     set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+    set_source_files_properties(${SRC_DIR}/main.cpp ${SRC_DIR}/kernels.cpp PROPERTIES LANGUAGE CUDA)
 
     target_compile_options(octopus_devel PRIVATE
          "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -std=c++20>")
