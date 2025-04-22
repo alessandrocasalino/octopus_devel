@@ -63,11 +63,7 @@ __global__ void projector_bra_phase_opt(const int nmat,
     const int start = 0;
     const int end = npoints;
     
-    #ifdef __HIP_PLATFORM_HCC__
     constexpr int smz = 64; // shared memory size
-    #else
-    constexpr int smz = 32; // shared memory size
-    #endif
 
     __shared__ int shared_map[smz];
     __shared__ double phases_x[smz];
