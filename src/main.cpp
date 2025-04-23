@@ -13,7 +13,8 @@
 constexpr bool debug {true};
 constexpr double tolerance {1e-3};
 
-void check_results(const auto &h_projection, const auto &h_projection_comparison) {
+void check_results(const auto& h_projection, const auto& h_projection_comparison) {
+    int errors {0};
     // Compare with the previous results
     for(int i = 0; i < h_projection.size(); ++i){
         const auto& hp = h_projection[i];
@@ -23,23 +24,26 @@ void check_results(const auto &h_projection, const auto &h_projection_comparison
             h_projection[i].x < h_projection_comparison[i].x - tolerance ||
             h_projection[i].y > h_projection_comparison[i].y + tolerance ||
             h_projection[i].y < h_projection_comparison[i].y - tolerance){
-                std::cerr << "Results do not match at index " << i << ": "
-                << "h_projection = (" << h_projection[i].x << ", " << h_projection[i].y << "), "
-                << "h_projection_comparison = (" << h_projection_comparison[i].x << ", " << h_projection_comparison[i].y << ")" << std::endl;
-            std::cout << "Results do not match!" << std::endl;
-            return;
+                if(errors == 0)
+                    std::cerr << "Results do not match at index " << i << ": "
+                    << "h_projection = (" << h_projection[i].x << ", " << h_projection[i].y << "), "
+                    << "h_projection_comparison = (" << h_projection_comparison[i].x << ", " << h_projection_comparison[i].y << ")" << std::endl;
+            errors++;
         }
     }
-    std::cout << "Results match!" << std::endl;
+    if (errors > 0) {
+        std::cerr << "Results do not match! Found " << errors << " errors over " << h_projection.size()<< "." << std::endl;
+    } else {
+        std::cout << "All results match!" << std::endl;
+    }
 }
 
 
-int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
+void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
-    // Initialize Mersenne Twister random number generator
-    std::mt19937 rng(42); // Seed with a fixed value for reproducibility
-    std::uniform_real_distribution<double> dist(-1.0, 1.0); // Range [-1.0, 1.0]
-
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    
     // Number of executions
     constexpr int nexec = 10;
 
@@ -47,7 +51,7 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     const int ldpsi = ld;
     const int ldprojection = ld;
 
-    std::vector<int> h_offsets = {
+    const std::vector<int> h_offsets = {
         1573, 27, 0, 0, 0, 0,
         1573, 27, 42471, 1573, 27, 2916,
         416, 12, 84942, 3146, 54, 5832,
@@ -62,14 +66,14 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         23071, 12, 944442, 74771, 162, 11016
     };
 
+    // Host allocations
     std::vector<rtype> h_matrix(1221294);
     std::vector<int> h_map(97842);
     std::vector<double> h_scal(174);
-    std::vector<rtype> h_psi(53.248 * (1 << ldpsi));
+    std::vector<rtype> h_psi(53248 * (1 << ldpsi));
 
-    std::vector<rtype> h_projection(174 * (1 << ldprojection));
-
-    std::vector<rtype> h_projection_comparison(174 * (1 << ldprojection));
+    std::vector<rtype> h_projection(174 * (1 << ldprojection), double2{0.0, 0.0});
+    std::vector<rtype> h_projection_comparison(h_projection.size(), double2{0.0, 0.0});
 
     std::vector<rtype> h_phases(2641734);
     constexpr int phase_offset = 0;
@@ -84,7 +88,7 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     for (auto &ph : h_phases)
         ph = {dist(rng), dist(rng)};
     
-    std::uniform_int_distribution<int> dist_h(1, ldpsi);
+    std::uniform_int_distribution<int> dist_h(1, ld);
     for (auto &h : h_map)
         h = dist_h(rng);
 
@@ -93,7 +97,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     rtype *d_matrix, *d_psi, *d_projection, *d_phases;
     double *d_scal;
 
-    // Device allocations
     CUDA_CHECK(cuMalloc(&d_offsets, h_offsets.size() * sizeof(int)));
     CUDA_CHECK(cuMalloc(&d_map, h_map.size() * sizeof(int)));
     CUDA_CHECK(cuMalloc(&d_matrix, h_matrix.size() * sizeof(rtype)));
@@ -103,7 +106,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     CUDA_CHECK(cuMalloc(&d_scal, h_scal.size() * sizeof(double)));
 
     {
-        // Launch kernel nexec times and measure execution time
         cuEvent_t start, stop;
 
         // Create CUDA/HIP events
@@ -112,6 +114,8 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
         std::array<float, nexec> execution_times;
         rtype last_result;
+
+        std::vector<rtype> h_projection_comparison_internal(h_projection.size(), double2{0.0, 0.0});
 
         for (int i = 0; i < nexec; ++i) {
 
@@ -155,14 +159,23 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
             execution_times[i] = milliseconds;
 
             // Copy results back to host
+            if (i > 1) {
+                h_projection_comparison_internal = h_projection;
+            }
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
+
             if constexpr (debug) {
-                last_result = h_projection[0];  // Store the last result for debugging
+                last_result = h_projection[200];  // Store the last result for debugging
                 std::cout << "\n[Debug] Last result from projection: " 
                         << last_result.x << ", " 
                         << last_result.y << std::endl;
                 std::cout << "[Profiling] Execution time for kernel run " << i + 1 << ": "
                         << milliseconds << " ms" << std::endl;
+            }
+            
+            if(i > 1){
+                // Compare with the previous results
+                check_results(h_projection, h_projection_comparison_internal);
             }
         }
 
@@ -184,9 +197,7 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         std::cout << "Minimum execution time: " << *std::min_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
         std::cout << "Maximum execution time: " << *std::max_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
 
-        // Copy results back to host
-        CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
-        CUDA_CHECK(cuMemcpy(h_projection_comparison.data(), d_projection, h_projection_comparison.size() * sizeof(rtype), cuMemcpyDeviceToHost));
+        h_projection_comparison = h_projection;
 
         // Print a few values from the result
         if constexpr (debug) {
@@ -210,7 +221,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
 
     {
-        // Launch kernel nexec times and measure execution time
         cuEvent_t start, stop;
 
         // Create CUDA/HIP events
@@ -220,8 +230,9 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         std::array<float, nexec> execution_times;
         rtype last_result;
 
-        for (int i = 0; i < nexec; ++i) {
+        std::vector<rtype> h_projection_comparison_internal(h_projection.size());
 
+        for (int i = 0; i < nexec; ++i) {
             // Copy host to device
             CUDA_CHECK(cuMemcpy(d_offsets, h_offsets.data(), h_offsets.size() * sizeof(int), cuMemcpyHostToDevice));
             CUDA_CHECK(cuMemcpy(d_map, h_map.data(), h_map.size() * sizeof(int), cuMemcpyHostToDevice));
@@ -262,14 +273,23 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
             execution_times[i] = milliseconds;
 
             // Copy results back to host
+            if (i > 1) {
+                h_projection_comparison_internal = h_projection;
+            }
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
+
             if constexpr (debug) {
-                last_result = h_projection[0];  // Store the last result for debugging
+                last_result = h_projection[200];  // Store the last result for debugging
                 std::cout << "\n[Debug] Last result from projection: " 
                         << last_result.x << ", " 
                         << last_result.y << std::endl;
                 std::cout << "[Profiling] Execution time for kernel run " << i + 1 << ": "
                         << milliseconds << " ms" << std::endl;
+            }
+
+            if(i > 1){
+                // Compare with the previous results
+                check_results(h_projection, h_projection_comparison_internal);
             }
         }
 
@@ -291,9 +311,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         std::cout << "Minimum execution time: " << *std::min_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
         std::cout << "Maximum execution time: " << *std::max_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
 
-        // Copy results back to host
-        CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
-
         // Print a few values from the result
         if constexpr (debug) {
             std::cout << "\n[Debug] Sample output from projection:" << std::endl;
@@ -314,7 +331,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
 
     {
-        // Launch kernel nexec times and measure execution time
         cuEvent_t start, stop;
         cuEvent_t init, temp_allocation, kernel1, handles_init, blas, handles_destr, kernel2, destr;
 
@@ -334,7 +350,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         rtype last_result;
 
         for (int ex = 0; ex < nexec + 1; ++ex) {
-
             // Copy host to device
             CUDA_CHECK(cuMemcpy(d_offsets, h_offsets.data(), h_offsets.size() * sizeof(int), cuMemcpyHostToDevice));
             CUDA_CHECK(cuMemcpy(d_map, h_map.data(), h_map.size() * sizeof(int), cuMemcpyHostToDevice));
@@ -515,8 +530,9 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
             // Copy results back to host
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
+            
             if constexpr (debug) {
-                last_result = h_projection[0];  // Store the last result for debugging
+                last_result = h_projection[200];
                 std::cout << "\n[Debug] Last result from projection: " 
                         << last_result.x << ", " 
                         << last_result.y << std::endl;
@@ -598,9 +614,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         std::cout << "Minimum execution time: " << *std::min_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
         std::cout << "Maximum execution time: " << *std::max_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
 
-        // Copy results back to host
-        CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
-
         // Print a few values from the result
         if constexpr (debug) {
             std::cout << "\n[Debug] Sample output from projection:" << std::endl;
@@ -624,8 +637,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         CUDA_CHECK(cuEventDestroy(destr));
     }
 
-
-
     // Cleanup
     CUDA_CHECK(cuFree(d_offsets));
     CUDA_CHECK(cuFree(d_map));
@@ -634,8 +645,6 @@ int launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     CUDA_CHECK(cuFree(d_projection));
     CUDA_CHECK(cuFree(d_phases));
     CUDA_CHECK(cuFree(d_scal));
-
-    return 0;
 }
 
 
@@ -664,15 +673,15 @@ int main() {
     
     {
         // Define the grid and block dimensions
-        dim3 grid(64, 4, 12);  // Example grid dimensions
-        dim3 block(32, 8, 1);  // Example block dimensions
+        dim3 grid(64, 4, 12);
+        dim3 block(32, 8, 1);
         launch_grid(grid, block, 7, 128);
     }
 
     {
         // Define the grid and block dimensions
-        dim3 grid(32, 4, 12);  // Example grid dimensions
-        dim3 block(32, 8, 1);  // Example block dimensions
+        dim3 grid(32, 4, 12);
+        dim3 block(32, 8, 1);
         launch_grid(grid, block, 5, 20);
     }
 

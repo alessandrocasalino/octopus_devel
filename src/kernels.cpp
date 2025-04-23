@@ -27,7 +27,7 @@ __global__ void projector_bra_phase(const int nmat,
     const int start = 0;
     const int end = npoints;
 
-    double2 aa = 0.0;
+    double2 aa {0.0, 0.0};
     for (int ip = start; ip < end; ip++) {
         double2 phasepsi = complex_mul(phases[phases_offset + map_offset + ip], psi[((map[map_offset + ip] - 1) << ldpsi) + ist]);
         aa += MUL(CONJ(matrix[matrix_offset + ip + nppj]), phasepsi);
@@ -145,7 +145,16 @@ __global__ void projector_bra_phase_gather (
     
     const int npoints = offsets[OFFSET_SIZE * matrix_id + 0];
     const int map_offset = offsets[OFFSET_SIZE * matrix_id + 3];
-
+    
+    //Fortran code
+    /*
+            do ip = 1, npoints
+              map_ip = pmat%map(ip)
+              do ist = 1, nst_linear
+                lpsi(ist, ip) = psib%zff_pack(ist, map_ip)*this%projector_phases(ip, 1, imat, psib%ik)
+              end do
+            end do
+    */
     // C code
     //double2 phasepsi = complex_mul(phases[phases_offset + map_offset + ip], psi[((map[map_offset + ip] - 1) << ldpsi) + ist]);
     
