@@ -8,9 +8,8 @@ __global__ void projector_bra_phase(const int nmat,
     const double2 * __restrict const psi, const int ldpsi,
     double2 * __restrict const projection, const int ldprojection,
     const double2 * __restrict const phases, const int phases_offset) {
-    const int my_warp_size = 1;
 
-    const int ist = get_global_id(0) / my_warp_size;
+    const int ist = get_global_id(0);
     const int ipj = get_global_id(1);
     const int imat = get_global_id(2);
 
@@ -32,8 +31,10 @@ __global__ void projector_bra_phase(const int nmat,
         double2 phasepsi = complex_mul(phases[phases_offset + map_offset + ip], psi[((map[map_offset + ip] - 1) << ldpsi) + ist]);
         aa += MUL(CONJ(matrix[matrix_offset + ip + nppj]), phasepsi);
     }
-
-    projection[ist + ((scal_offset + ipj) << ldprojection)] = scal[scal_offset + ipj] * aa;
+    
+    double scal_t = scal[scal_offset + ipj];
+    aa *= scal_t;
+    projection[ist + ((scal_offset + ipj) << ldprojection)] = aa;
 }
 
 #ifdef __HIP_PLATFORM_HCC__

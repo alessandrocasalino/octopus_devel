@@ -39,7 +39,7 @@ void check_results(const auto& h_projection, const auto& h_projection_comparison
 }
 
 
-void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
+void launch_grid(const dim3& grid, const dim3& block, const int ld, const int nst_linear) {
 
     std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
@@ -70,9 +70,9 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     std::vector<rtype> h_matrix(1221294);
     std::vector<int> h_map(97842);
     std::vector<double> h_scal(174);
-    std::vector<rtype> h_psi(53248 * (1 << ldpsi));
+    std::vector<rtype> h_psi(53248 << ldpsi);
 
-    std::vector<rtype> h_projection(174 * (1 << ldprojection), double2{0.0, 0.0});
+    std::vector<rtype> h_projection(174 << ldprojection, double2{0.0, 0.0});
     std::vector<rtype> h_projection_comparison(h_projection.size(), double2{0.0, 0.0});
 
     std::vector<rtype> h_phases(2641734);
@@ -94,16 +94,18 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
     // Device allocations
     int *d_offsets, *d_map;
-    rtype *d_matrix, *d_psi, *d_projection, *d_phases;
+    rtype *d_matrix, *d_psi, *d_phases;
     double *d_scal;
 
     CUDA_CHECK(cuMalloc(&d_offsets, h_offsets.size() * sizeof(int)));
     CUDA_CHECK(cuMalloc(&d_map, h_map.size() * sizeof(int)));
     CUDA_CHECK(cuMalloc(&d_matrix, h_matrix.size() * sizeof(rtype)));
     CUDA_CHECK(cuMalloc(&d_psi, h_psi.size() * sizeof(rtype)));
-    CUDA_CHECK(cuMalloc(&d_projection, h_projection.size() * sizeof(rtype)));
     CUDA_CHECK(cuMalloc(&d_phases, h_phases.size() * sizeof(rtype)));
     CUDA_CHECK(cuMalloc(&d_scal, h_scal.size() * sizeof(double)));
+
+    rtype *d_projection;
+    CUDA_CHECK(cuMalloc(&d_projection, h_projection.size() * sizeof(rtype)));
 
     {
         cuEvent_t start, stop;
@@ -159,7 +161,7 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
             execution_times[i] = milliseconds;
 
             // Copy results back to host
-            if (i > 1) {
+            if (i > 0) {
                 h_projection_comparison_internal = h_projection;
             }
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
@@ -173,7 +175,7 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                         << milliseconds << " ms" << std::endl;
             }
             
-            if(i > 1){
+            if(i > 0){
                 // Compare with the previous results
                 check_results(h_projection, h_projection_comparison_internal);
             }
@@ -218,6 +220,11 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
         CUDA_CHECK(cuEventDestroy(stop));
     }
 
+
+    std::cout << std::endl;
+    std::cout << std::endl;
+    std::cerr << std::endl;
+    std::cerr << std::endl;
 
 
     {
@@ -273,7 +280,7 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
             execution_times[i] = milliseconds;
 
             // Copy results back to host
-            if (i > 1) {
+            if (i > 0) {
                 h_projection_comparison_internal = h_projection;
             }
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
@@ -287,7 +294,7 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                         << milliseconds << " ms" << std::endl;
             }
 
-            if(i > 1){
+            if(i > 0){
                 // Compare with the previous results
                 check_results(h_projection, h_projection_comparison_internal);
             }
@@ -329,6 +336,11 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
     }
 
 
+    std::cout << std::endl;
+    std::cout << std::endl;
+    std::cerr << std::endl;
+    std::cerr << std::endl;
+
 
     {
         cuEvent_t start, stop;
@@ -348,6 +360,8 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
 
         std::array<float, nexec> execution_times;
         rtype last_result;
+
+        std::vector<rtype> h_projection_comparison_internal(h_projection.size());
 
         for (int ex = 0; ex < nexec + 1; ++ex) {
             // Copy host to device
@@ -529,6 +543,9 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
             }
 
             // Copy results back to host
+            if (ex > 0) {
+                h_projection_comparison_internal = h_projection;
+            }
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
             
             if constexpr (debug) {
@@ -593,6 +610,11 @@ void launch_grid(dim3 grid, dim3 block, int ld, int nst_linear) {
                 if(ex != 0){
                     execution_times[ex - 1] = milliseconds - elapsed0 - elapsed1 - elapsed3_0 - elapsed3_1 - elapsed5- elapsed6;
                 }
+            }
+
+            if(ex > 0){
+                // Compare with the previous results
+                check_results(h_projection, h_projection_comparison_internal);
             }
         }
 

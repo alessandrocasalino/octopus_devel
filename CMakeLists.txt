@@ -16,14 +16,16 @@ add_executable(octopus_devel ${SRC_DIR}/main.cpp ${SRC_DIR}/kernels.cpp)
 # Include the header directory
 target_include_directories(octopus_devel PRIVATE ${SRC_DIR})
 
-# Check for ROCm/HIP
-find_package(HIP)
-
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(octopus_devel PRIVATE -g -O0)
+    message(STATUS "Building in Debug mode.")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(octopus_devel PRIVATE -O3)
+    message(STATUS "Building in Release mode.")
 endif()
+
+# Check for ROCm/HIP
+find_package(HIP)
 
 if(HIP_FOUND)
     message(STATUS "HIP found. Building with ROCm support.")
@@ -43,8 +45,13 @@ else()
 
     set_source_files_properties(${SRC_DIR}/main.cpp ${SRC_DIR}/kernels.cpp PROPERTIES LANGUAGE CUDA)
 
-    target_compile_options(octopus_devel PRIVATE
-         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -std=c++20>")
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_options(octopus_devel PRIVATE
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-G --compiler-options -std=c++20>")
+    else()
+        target_compile_options(octopus_devel PRIVATE
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -std=c++20>")
+    endif()
     set_target_properties(octopus_devel PROPERTIES
              CUDA_SEPARABLE_COMPILATION ON)
 

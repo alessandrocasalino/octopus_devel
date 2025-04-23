@@ -17,6 +17,7 @@ fi
 # Default behavior: perform configuration and use all available cores for parallelism
 DO_CONFIGURE=true
 PARALLEL_CORES=$(nproc) # Default to the number of available cores
+BUILD_TYPE="Release"   # Default build type
 
 # Parse optional arguments
 while [[ $# -gt 0 ]]; do
@@ -34,6 +35,10 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        --debug)
+            BUILD_TYPE="Debug"
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -43,10 +48,10 @@ done
 
 # Perform configuration if enabled
 if $DO_CONFIGURE; then
-    echo "Configuring the project with CMake using $PARALLEL_CORES cores..."
+    echo "Configuring the project with CMake using $PARALLEL_CORES cores in $BUILD_TYPE mode..."
     rm -rf build
     mkdir build
-    cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+    cmake -B build -S . -DCMAKE_BUILD_TYPE=$BUILD_TYPE
 fi
 
 # Always build the project

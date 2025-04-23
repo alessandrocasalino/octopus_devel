@@ -19,9 +19,9 @@
 #SBATCH -p gpudev
 
 module purge
-module load cuda/12.6
+module load cuda/12.6-nvhpcsdk_25
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
-srun ./build/octopus_devel
+compute-sanitizer ./build/octopus_devel
 
