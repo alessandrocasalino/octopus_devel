@@ -12,6 +12,7 @@
 
 constexpr bool debug {true};
 constexpr double tolerance {1e-3};
+constexpr int check_index {50};
 
 void check_results(const auto& h_projection, const auto& h_projection_comparison) {
     int errors {0};
@@ -167,7 +168,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
 
             if constexpr (debug) {
-                last_result = h_projection[200];  // Store the last result for debugging
+                last_result = h_projection[check_index];  // Store the last result for debugging
                 std::cout << "\n[Debug] Last result from projection: " 
                         << last_result.x << ", " 
                         << last_result.y << std::endl;
@@ -286,7 +287,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
 
             if constexpr (debug) {
-                last_result = h_projection[200];  // Store the last result for debugging
+                last_result = h_projection[check_index];  // Store the last result for debugging
                 std::cout << "\n[Debug] Last result from projection: " 
                         << last_result.x << ", " 
                         << last_result.y << std::endl;
@@ -549,7 +550,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
             CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
             
             if constexpr (debug) {
-                last_result = h_projection[200];
+                last_result = h_projection[check_index];
                 std::cout << "\n[Debug] Last result from projection: " 
                         << last_result.x << ", " 
                         << last_result.y << std::endl;
@@ -694,17 +695,25 @@ int main() {
     std::cout << "Max threads per block: " << device_prop.maxThreadsPerBlock << std::endl;
     
     {
-        // Define the grid and block dimensions
+        #ifndef __HIP_PLATFORM_HCC__
         dim3 grid(64, 4, 12);
         dim3 block(32, 8, 1);
+        #else
+        dim3 grid(1, 12, 12);
+        dim3 block(64, 4, 1);
+        #endif
         launch_grid(grid, block, 7, 128);
     }
 
     {
         // Define the grid and block dimensions
+        #ifndef __HIP_PLATFORM_HCC__
         dim3 grid(32, 4, 12);
         dim3 block(32, 8, 1);
-        launch_grid(grid, block, 5, 20);
+        #else
+        dim3 grid(1, 4, 12);
+        dim3 block(32, 8, 1);
+        #endif
     }
 
     return 0;

@@ -15,7 +15,7 @@
 #SBATCH --mail-type=NONE
 #SBATCH --mail-user=alessandro.casalino@mpcdf.mpg.de
 #SBATCH --time=0:05:00
-#SBATCH -p apudev
+##SBATCH -p apudev
 
 module purge
 module load rocm/6.4
