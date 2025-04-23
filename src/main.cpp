@@ -21,10 +21,8 @@ void check_results(const auto& h_projection, const auto& h_projection_comparison
         const auto& hp = h_projection[i];
         const auto& hpc = h_projection_comparison[i];
         // Compare elements with a tolerance
-        if(h_projection[i].x > h_projection_comparison[i].x + tolerance || 
-            h_projection[i].x < h_projection_comparison[i].x - tolerance ||
-            h_projection[i].y > h_projection_comparison[i].y + tolerance ||
-            h_projection[i].y < h_projection_comparison[i].y - tolerance){
+        if(std::abs(h_projection[i].x - h_projection_comparison[i].x)/std::abs(h_projection[i].x + h_projection_comparison[i].x) > tolerance || 
+           std::abs(h_projection[i].y - h_projection_comparison[i].y)/std::abs(h_projection[i].y + h_projection_comparison[i].y) > tolerance){
                 if(errors == 0)
                     std::cerr << "Results do not match at index " << i << ": "
                     << "h_projection = (" << h_projection[i].x << ", " << h_projection[i].y << "), "
@@ -699,7 +697,7 @@ int main() {
         dim3 grid(64, 4, 12);
         dim3 block(32, 8, 1);
         #else
-        dim3 grid(1, 12, 12);
+        dim3 grid(1, 7, 12);
         dim3 block(64, 4, 1);
         #endif
         launch_grid(grid, block, 7, 128);
@@ -714,6 +712,7 @@ int main() {
         dim3 grid(1, 4, 12);
         dim3 block(32, 8, 1);
         #endif
+        launch_grid(grid, block, 5, 20);
     }
 
     return 0;
