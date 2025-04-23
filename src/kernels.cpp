@@ -32,9 +32,7 @@ __global__ void projector_bra_phase(const int nmat,
         aa += MUL(CONJ(matrix[matrix_offset + ip + nppj]), phasepsi);
     }
     
-    double scal_t = scal[scal_offset + ipj];
-    aa *= scal_t;
-    projection[ist + ((scal_offset + ipj) << ldprojection)] = aa;
+    projection[ist + ((scal_offset + ipj) << ldprojection)] = scal[scal_offset + ipj] * aa;
 }
 
 #ifdef __HIP_PLATFORM_HCC__
