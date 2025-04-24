@@ -658,6 +658,241 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
         CUDA_CHECK(cuEventDestroy(destr));
     }
 
+
+
+    {
+        cuEvent_t start, stop;
+        cuEvent_t init, temp_allocation, kernel1, handles_init, blas, handles_destr, kernel2, destr;
+
+        // Create CUDA/HIP events
+        CUDA_CHECK(cuEventCreate(&start));
+        CUDA_CHECK(cuEventCreate(&stop));
+
+        std::array<float, nexec> execution_times;
+        rtype last_result;
+
+        std::vector<rtype> h_projection_comparison_internal(h_projection.size());
+
+        // Creation of arrays and handles outside of the loop
+        int num_streams = nmat;
+        cuStream_t *streams = new cuStream_t[num_streams];
+        for (int i = 0; i < num_streams; ++i) {
+            CUDA_CHECK(cuStreamCreate(streams[i]));
+        }
+
+        constexpr cuBlas_double_complex M_z0 = {0., 0.};
+        constexpr cuBlas_double_complex M_z1 = {1., 0.};
+        
+        // Create cuBLAS handles
+        cuBlas_handle *handles = new cuBlas_handle[num_streams];
+        for (int i = 0; i < num_streams; ++i) {
+            if (auto blas_status = cuBlasCreate(handles[i]); blas_status != 0) {
+                std::cerr << "Error creating cuBLAS handle: " << blas_status << std::endl;
+                exit(EXIT_FAILURE);
+            }
+
+            if (auto blas_status = cuBlasSetStream(handles[i], streams[i]); blas_status != 0) {
+                std::cerr << "Error setting stream for cuBLAS: " << blas_status << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Temporary vector for phasepsi results and matrix multiplications (only on device)
+        double2 **d_phasepsi = new double2*[num_streams];
+        double2 **d_projection_int = new double2*[num_streams];
+        for (int i = 0; i < num_streams; ++i) {
+            int npoints = h_offsets[i * OFFSET_SIZE + 0];
+            int nprojs = h_offsets[i * OFFSET_SIZE + 1];
+            
+            CUDA_CHECK(cuMallocAsync((void**)&d_phasepsi[i], npoints * nst_linear * sizeof(double2), streams[i]));
+            CUDA_CHECK(cuMemsetAsync(d_phasepsi[i], 0, npoints * nst_linear * sizeof(double2), streams[i]));
+
+            CUDA_CHECK(cuMallocAsync((void**)&d_projection_int[i], nprojs * nst_linear * sizeof(double2), streams[i]));
+            CUDA_CHECK(cuMemsetAsync(d_projection_int[i], 0, nprojs * nst_linear * sizeof(double2), streams[i]));
+        }
+
+        for (int ex = 0; ex < nexec + 1; ++ex) {
+            // Copy host to device
+            CUDA_CHECK(cuMemcpy(d_offsets, h_offsets.data(), h_offsets.size() * sizeof(int), cuMemcpyHostToDevice));
+            CUDA_CHECK(cuMemcpy(d_map, h_map.data(), h_map.size() * sizeof(int), cuMemcpyHostToDevice));
+            CUDA_CHECK(cuMemcpy(d_matrix, h_matrix.data(), h_matrix.size() * sizeof(rtype), cuMemcpyHostToDevice));
+            CUDA_CHECK(cuMemcpy(d_psi, h_psi.data(), h_psi.size() * sizeof(rtype), cuMemcpyHostToDevice));
+            CUDA_CHECK(cuMemcpy(d_phases, h_phases.data(), h_phases.size() * sizeof(rtype), cuMemcpyHostToDevice));
+            CUDA_CHECK(cuMemcpy(d_scal, h_scal.data(), h_scal.size() * sizeof(double), cuMemcpyHostToDevice));
+
+            // Record the start event
+            CUDA_CHECK(cuEventRecord(start));
+
+            // Temporary vector for phasepsi results and matrix multiplications (only on device)
+            for (int i = 0; i < num_streams; ++i) {
+                int npoints = h_offsets[i * OFFSET_SIZE + 0];
+                int nprojs = h_offsets[i * OFFSET_SIZE + 1];
+                CUDA_CHECK(cuMemsetAsync(d_phasepsi[i], 0, npoints * nst_linear * sizeof(double2), streams[i]));
+                CUDA_CHECK(cuMemsetAsync(d_projection_int[i], 0, nprojs * nst_linear * sizeof(double2), streams[i]));
+            }
+            
+            for (int i = 0; i < num_streams; ++i) {
+                int npoints = h_offsets[i * OFFSET_SIZE + 0];
+
+                const dim3 block {64, 2};
+                const dim3 grid {(npoints + block.x - 1) / block.x, (nst_linear + block.y - 1) / block.y};
+                // Launch the gather kernel
+                cuLaunchKernel(
+                    projector_bra_phase_gather,
+                    grid, block,
+                    0, streams[i],
+                    d_offsets,
+                    d_map,
+                    d_psi, ldpsi,
+                    d_phases, phase_offset,
+                    d_phasepsi[i],
+                    nst_linear,
+                    i
+                );
+                CUDA_CHECK(cuGetLastError());
+            }
+
+            // Perform matrix multiplication on stream
+            for (int i = 0; i < num_streams; ++i) {
+                // Fortran code
+                //call blas_gemm('C', 'T', nprojs, nst_linear, npoints, &
+                //    M_z1, pmat%zprojectors(1, 1), npoints, lpsi(1, 1), nst_linear, M_z0, tmp_proj(1,1), nprojs)
+                // Macro
+                // cuBlas_gemm (handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+                
+                int npoints = h_offsets[i * OFFSET_SIZE + 0];
+                int nprojs = h_offsets[i * OFFSET_SIZE + 1];
+                int matrix_offset = h_offsets[i * OFFSET_SIZE + 2];
+                
+                cuBlas_zgemm(handles[i], cuBlas_operation_conjugate_transpose, cuBlas_operation_transpose,
+                    nprojs, nst_linear, npoints,
+                    &M_z1, reinterpret_cast<cuBlas_double_complex *>(&d_matrix[matrix_offset]), npoints,
+                    reinterpret_cast<cuBlas_double_complex *>(d_phasepsi[i]), nst_linear,
+                    &M_z0,
+                    reinterpret_cast<cuBlas_double_complex *>(d_projection_int[i]), nprojs);
+                CUDA_CHECK(cuGetLastError());
+            }
+            
+            for (int i = 0; i < num_streams; ++i) {
+                int npoints = h_offsets[i * OFFSET_SIZE + 0];
+                int nprojs = h_offsets[i * OFFSET_SIZE + 1];
+                int matrix_offset = h_offsets[i * OFFSET_SIZE + 2];
+
+                const dim3 block{128, 2};
+                const dim3 grid {(nprojs + block.x - 1) / block.x, (nst_linear + block.y - 1) / block.y};
+                // Final scaling
+                cuLaunchKernel(
+                    projector_bra_phase_mult,
+                    grid, block,
+                    0, streams[i],
+                    d_offsets,
+                    d_scal,
+                    d_projection, ldprojection,
+                    nst_linear,
+                    d_projection_int[i],
+                    i
+                );
+                CUDA_CHECK(cuGetLastError());
+            }
+
+            // Synchronize all streams
+            for (int i = 0; i < num_streams; ++i) {
+                CUDA_CHECK(cuStreamSynchronize(streams[i]));
+            }
+        
+            // Record the stop event and synchronize
+            CUDA_CHECK(cuEventRecord(stop));
+            CUDA_CHECK(cuEventSynchronize(stop));
+        
+            // Measure the elapsed time
+            float milliseconds = 0;
+            cuEventElapsedTime(&milliseconds, start, stop);
+            if(ex != 0){
+                execution_times[ex - 1] = milliseconds;
+            }
+
+            // Copy results back to host
+            if (ex > 0) {
+                h_projection_comparison_internal = h_projection;
+            }
+            CUDA_CHECK(cuMemcpy(h_projection.data(), d_projection, h_projection.size() * sizeof(rtype), cuMemcpyDeviceToHost));
+            
+            if constexpr (debug) {
+                last_result = h_projection[check_index];
+                std::cout << "\n[Debug] Last result from projection: " 
+                        << last_result.x << ", " 
+                        << last_result.y << std::endl;
+                std::cout << "[Profiling] Execution time for kernel run " << ex + 1 << ": "
+                        << milliseconds << " ms" << std::endl;
+            }
+
+            if(ex > 0){
+                // Compare with the previous results
+                check_results(h_projection, h_projection_comparison_internal, "internal_blas");
+            }
+        }
+
+        // Calculate the mean execution time
+        float mean_time = std::accumulate(execution_times.begin(), execution_times.end(), 0.0f) / execution_times.size();
+        // Calculate the standard deviation
+        float sum_squared_diff = 0.0f;
+        for (const auto &time : execution_times) {
+            sum_squared_diff += (time - mean_time) * (time - mean_time);
+        }
+        float stddev = std::sqrt(sum_squared_diff / nexec);
+        std::cout << "\n[Profiling] Mean projector_bra_phase_shmem_opt execution time over " << nexec << " runs: " << mean_time << " ms\n";
+        std::cout << "\n[Profiling] Standard deviation of projector_bra_phase_shmem_opt execution time: " << stddev << " ms\n";
+
+        std::cout << "Single executions times: " << std::endl;
+        for (int i = 0; i < nexec; ++i) {
+            std::cout << "Execution " << i + 1 << ": " << execution_times[i] << " ms" << std::endl;
+        }
+        std::cout << "Minimum execution time: " << *std::min_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
+        std::cout << "Maximum execution time: " << *std::max_element(execution_times.begin(), execution_times.end()) << " ms" << std::endl;
+
+        // Print a few values from the result
+        if constexpr (debug) {
+            std::cout << "\n[Debug] Sample output from projection:" << std::endl;
+            for (int i = 0; i < std::min(10, static_cast<int>(h_projection.size())); ++i) {
+                std::cout << "h_projection[" << i << "] = (" 
+                        << h_projection[i].x << ", " 
+                        << h_projection[i].y << ")" << std::endl;
+            }
+        }
+
+        // Compare with the previous results
+        check_results(h_projection, h_projection_comparison, "blas");
+
+        // Destroy cuBLAS handles
+        for (int i = 0; i < num_streams; ++i) {
+            if (auto blas_status = cuBlasDestroy(handles[i]); blas_status != 0) {
+                std::cerr << "Error destroying cuBLAS handle: " << blas_status << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        delete[] handles;
+
+        // Cleanup temporary variables
+        for (int i = 0; i < num_streams; ++i) {
+            CUDA_CHECK(cuFreeAsync(d_phasepsi[i], streams[i])); // Free memory for each stream
+            CUDA_CHECK(cuFreeAsync(d_projection_int[i], streams[i])); // Free memory for each stream
+        }
+        delete[] d_phasepsi;
+        delete[] d_projection_int;
+
+        // Cleanup
+        for (int i = 0; i < num_streams; ++i) {
+            CUDA_CHECK(cuStreamDestroy(streams[i]));
+        }
+        delete[] streams;
+
+        CUDA_CHECK(cuEventDestroy(start));
+        CUDA_CHECK(cuEventDestroy(stop));
+    }
+
+
+
+
     // Cleanup
     CUDA_CHECK(cuFree(d_offsets));
     CUDA_CHECK(cuFree(d_map));
@@ -690,6 +925,7 @@ int main() {
     std::cout << "Global memory: " << (device_prop.totalGlobalMem >> 20) << " MB" << std::endl;
     std::cout << "Shared memory per block: " << (device_prop.sharedMemPerBlock >> 10) << " KB" << std::endl;
     std::cout << "Multiprocessors: " << device_prop.multiProcessorCount << std::endl;
+    std::cout << "Max streams per device: " << device_prop.asyncEngineCount << std::endl;
     std::cout << "Max threads per block: " << device_prop.maxThreadsPerBlock << std::endl;
     
     {
