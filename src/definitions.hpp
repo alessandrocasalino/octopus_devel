@@ -111,7 +111,7 @@ class __align__(16) double2 {
 public:
     double x;
     double y;
-    DEVICE_FUNC __forceinline__ double2(const double &a = 0, const double &b = 0) : x(a), y(b) {}
+    DEVICE_FUNC __forceinline__ constexpr double2(const double &a = 0, const double &b = 0) : x(a), y(b) {}
 };
 
 

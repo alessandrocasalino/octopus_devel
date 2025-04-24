@@ -662,7 +662,6 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
 
     {
         cuEvent_t start, stop;
-        cuEvent_t init, temp_allocation, kernel1, handles_init, blas, handles_destr, kernel2, destr;
 
         // Create CUDA/HIP events
         CUDA_CHECK(cuEventCreate(&start));
@@ -680,8 +679,8 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
             CUDA_CHECK(cuStreamCreate(streams[i]));
         }
 
-        constexpr cuBlas_double_complex M_z0 = {0., 0.};
-        constexpr cuBlas_double_complex M_z1 = {1., 0.};
+        constexpr cuBlas_double_complex M_z0 {0., 0.};
+        constexpr cuBlas_double_complex M_z1 {1., 0.};
         
         // Create cuBLAS handles
         cuBlas_handle *handles = new cuBlas_handle[num_streams];
