@@ -14,7 +14,7 @@ constexpr bool debug {true};
 constexpr double tolerance {1e-3};
 constexpr int check_index {50};
 
-void check_results(const auto& h_projection, const auto& h_projection_comparison) {
+void check_results(const auto& h_projection, const auto& h_projection_comparison, const std::string& name_kernel) {
     int errors {0};
     // Compare with the previous results
     for(int i = 0; i < h_projection.size(); ++i){
@@ -24,16 +24,16 @@ void check_results(const auto& h_projection, const auto& h_projection_comparison
         if(std::abs(h_projection[i].x - h_projection_comparison[i].x)/std::abs(h_projection[i].x + h_projection_comparison[i].x) > tolerance || 
            std::abs(h_projection[i].y - h_projection_comparison[i].y)/std::abs(h_projection[i].y + h_projection_comparison[i].y) > tolerance){
                 if(errors == 0)
-                    std::cerr << "Results do not match at index " << i << ": "
+                    std::cerr << "Results do not match in kernel " << name_kernel << " at index " << i << ": "
                     << "h_projection = (" << h_projection[i].x << ", " << h_projection[i].y << "), "
                     << "h_projection_comparison = (" << h_projection_comparison[i].x << ", " << h_projection_comparison[i].y << ")" << std::endl;
             errors++;
         }
     }
     if (errors > 0) {
-        std::cerr << "Results do not match! Found " << errors << " errors over " << h_projection.size()<< "." << std::endl;
+        std::cerr << "Results do not match in kernel " << name_kernel << "! Found " << errors << " errors over " << h_projection.size() << "." << std::endl;
     } else {
-        std::cout << "All results match!" << std::endl;
+        std::cout << "All results match in kernel " << name_kernel << "!" << std::endl;
     }
 }
 
@@ -176,7 +176,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
             
             if(i > 0){
                 // Compare with the previous results
-                check_results(h_projection, h_projection_comparison_internal);
+                check_results(h_projection, h_projection_comparison_internal, "internal_original");
             }
         }
 
@@ -295,7 +295,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
 
             if(i > 0){
                 // Compare with the previous results
-                check_results(h_projection, h_projection_comparison_internal);
+                check_results(h_projection, h_projection_comparison_internal, "internal_optimized");
             }
         }
 
@@ -328,7 +328,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
         }
 
         // Compare with the previous results
-        check_results(h_projection, h_projection_comparison);
+        check_results(h_projection, h_projection_comparison, "optimized");
 
         CUDA_CHECK(cuEventDestroy(start));
         CUDA_CHECK(cuEventDestroy(stop));
@@ -613,7 +613,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
 
             if(ex > 0){
                 // Compare with the previous results
-                check_results(h_projection, h_projection_comparison_internal);
+                check_results(h_projection, h_projection_comparison_internal, "internal_blas");
             }
         }
 
@@ -646,7 +646,7 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
         }
 
         // Compare with the previous results
-        check_results(h_projection, h_projection_comparison);
+        check_results(h_projection, h_projection_comparison, "blas");
 
         CUDA_CHECK(cuEventDestroy(start));
         CUDA_CHECK(cuEventDestroy(stop));
@@ -700,7 +700,7 @@ int main() {
         dim3 grid(1, 7, 12);
         dim3 block(64, 4, 1);
         #endif
-        launch_grid(grid, block, 7, 128);
+        launch_grid(grid, block, 6, 64);
     }
 
     {

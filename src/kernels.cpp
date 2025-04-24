@@ -62,22 +62,21 @@ __global__ void projector_bra_phase_opt(const int nmat,
     const int start = 0;
     const int end = npoints;
     
-    constexpr int smz = 64; // shared memory size
+    constexpr int smz = 32; // shared memory size
 
     __shared__ int shared_map[smz];
     __shared__ double phases_x[smz];
     __shared__ double phases_y[smz];
 
-    double2 aa = 0.0;
+    int lidx = get_local_id(0);
+
+    double2 aa {0.0, 0.0};
     for(int ip = start; ip < end; ip+=smz){
-        int lidx = get_local_id(0);
-        while(true){
-            if(ip + lidx >= end || lidx >= smz) break;
+        if(ip + lidx < end && lidx < smz){
             shared_map[lidx] = map[map_offset + ip + lidx];
             double2 phase = phases[phases_offset + map_offset + ip + lidx];
             phases_x[lidx] = phase.x;
             phases_y[lidx] = phase.y;
-            lidx += blockDim.x;
         }
         __syncthreads();
 
