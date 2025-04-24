@@ -38,7 +38,7 @@ void check_results(const auto& h_projection, const auto& h_projection_comparison
 }
 
 
-void launch_grid(const dim3& grid, const dim3& block, const int ld, const int nst_linear) {
+void launch_grid(const dim3& grid, const dim3& block, const int ld, const int nst_linear, const dim3& grid_nv_opt = {0, 0, 0}, const dim3& block_nv_opt = {0, 0, 0}) {
 
     std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
@@ -249,13 +249,20 @@ void launch_grid(const dim3& grid, const dim3& block, const int ld, const int ns
 
             // Reset the projection vector on the device
             CUDA_CHECK(cuMemset(d_projection, 0, h_projection.size() * sizeof(rtype)));
+
+            dim3 grid_opt {grid};
+            dim3 block_opt {block};
+            if(grid_nv_opt.x != 0) {
+                grid_opt = grid_nv_opt;
+                block_opt = block_nv_opt;
+            }
         
             // Record the start event
             CUDA_CHECK(cuEventRecord(start));
         
             // Launch the kernel
             cuLaunchKernel(projector_bra_phase_opt,
-                        grid, block,
+                        grid_opt, block_opt,
                         0, 0,
                         nmat,
                         d_offsets,
@@ -927,27 +934,38 @@ int main() {
     std::cout << "Max streams per device: " << device_prop.asyncEngineCount << std::endl;
     std::cout << "Max threads per block: " << device_prop.maxThreadsPerBlock << std::endl;
     
+    // The original kernel required a specific grid and block size to work properly
+    // This is why we need to speficy different 
+
     {
-        #ifndef __HIP_PLATFORM_HCC__
-        dim3 grid(64, 4, 12);
-        dim3 block(32, 8, 1);
-        #else
+        
+        // Grid dimensions for general case
         dim3 grid(1, 7, 12);
         dim3 block(64, 4, 1);
-        #endif
+        #ifndef __HIP_PLATFORM_HCC__
+        // CUDA case needs a dedicated grid for its optimized kernel
+        dim3 grid_nv_opt(64, 4, 12);
+        dim3 block_nv_opt(32, 8, 1);
+        launch_grid(grid, block, 6, 64, grid_nv_opt, block_nv_opt);
+        #else
+        // HIP case
         launch_grid(grid, block, 6, 64);
+        #endif
     }
 
     {
         // Define the grid and block dimensions
-        #ifndef __HIP_PLATFORM_HCC__
-        dim3 grid(32, 4, 12);
-        dim3 block(32, 8, 1);
-        #else
         dim3 grid(1, 4, 12);
         dim3 block(32, 8, 1);
-        #endif
+
+        #ifndef __HIP_PLATFORM_HCC__
+        // CUDA case needs a dedicated grid for its optimized kernel
+        dim3 grid_nv_opt(32, 4, 12);
+        dim3 block_nv_opt(32, 8, 1);
+        launch_grid(grid, block, 5, 20, grid_nv_opt, block_nv_opt);
+        #else
         launch_grid(grid, block, 5, 20);
+        #endif
     }
 
     return 0;
